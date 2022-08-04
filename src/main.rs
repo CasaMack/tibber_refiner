@@ -24,7 +24,7 @@ async fn main() {
                 break;
             } else {
                 tracing::warn!("Failed attempt {} to tick: {}", i, res.err().unwrap());
-                let backoff = (2 as u64).pow(i);
+                let backoff = 2_u64.pow(i);
                 tracing::debug!("Exponential backoff: {} seconds", backoff);
                 time::sleep(time::Duration::from_secs(backoff)).await;
             }

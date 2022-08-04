@@ -1,8 +1,8 @@
 use std::{env, sync::Arc, rc};
 
-use chrono::{DateTime, Utc};
-use influxdb::{Client, InfluxDbWriteable};
-use tokio::{time, join};
+use chrono::{Utc};
+use influxdb::{Client};
+use tokio::{time};
 use tracing::{instrument, metadata::LevelFilter, Level};
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::{
@@ -11,7 +11,7 @@ use tracing_subscriber::{
 };
 
 const DEFAULT_RETRIES: u32 = 10;
-const DEFAULT_UPDATE_TIME: &'static str = "0";
+const DEFAULT_UPDATE_TIME: &str = "0";
 
 use super::refiner::refine;
 
@@ -91,7 +91,7 @@ pub async fn tick(
     let client_ref = rc::Rc::new(client);
     for hour in 0..23 {
         let clone = client_ref.clone();
-        handles.push(async move { refine(hour, clone.as_ref()).await.or_else(|e| {tracing::error!("Error in refining {}", hour); Err(e)}) });
+        handles.push(async move { refine(hour, clone.as_ref()).await.map_err(|e| {tracing::error!("Error in refining {}", hour); e}) });
     }
     tokio::join!(futures::future::join_all(handles));
     

@@ -41,7 +41,7 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<f64>, ()> {
         Day::Today => chrono::Local::now()
             .date()
             .to_string()
-            .split("+")
+            .split('+')
             .into_iter()
             .next()
             .ok_or(())?
@@ -50,7 +50,7 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<f64>, ()> {
             .date()
             .succ()
             .to_string()
-            .split("+")
+            .split('+')
             .into_iter()
             .next()
             .ok_or(())?
@@ -171,12 +171,12 @@ pub async fn rel_thresh(
 ) -> Result<Vec<HourPrice>, ()> {
     let avg = average(prices)?;
     if low_thresh > 1.0 {
-        low_thresh = low_thresh / 100.0;
+        low_thresh /= 100.0;
     }
     let low_val = low_thresh * avg;
 
     if high_thresh > 1.0 {
-        high_thresh = high_thresh / 100.0;
+        high_thresh /= 100.0;
     }
     let high_val = high_thresh * avg;
     Ok(get_hour_price(day, client)
@@ -314,7 +314,7 @@ pub async fn refine(hour: usize, client: &Client) -> Result<(), ()> {
             .date()
             .and_hms(0, 0, 0)
             .to_rfc3339()
-            .split("T")
+            .split('T')
             .into_iter()
             .next()
             .unwrap()
