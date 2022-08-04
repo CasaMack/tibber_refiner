@@ -33,10 +33,11 @@ struct Serie {
 struct Value {
     _datetime: String,
     pub value: f64,
+    pub hour: u32
 }
 
 #[instrument(skip(client))]
-pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<f64>, ()> {
+pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()> {
     let date = match day {
         Day::Today => chrono::Local::now()
             .date()
@@ -57,13 +58,15 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<f64>, ()> {
             .to_owned(),
     };
     let read_query = ReadQuery::new(format!(
-        "SELECT price FROM price_info WHERE date = '{}'",
+        "SELECT price, hour FROM price_info WHERE date = '{}'",
         date
     ));
+
 
     let read_result = client.query(read_query).await;
     match read_result {
         Ok(result) => {
+            println!("{}", result);
             let r: QueryResults = serde_json::from_str(&result).or(Err(()))?;
             Ok(r.results
                 .get(0)
@@ -73,10 +76,11 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<f64>, ()> {
                 .ok_or(())?
                 .values
                 .iter()
-                .map(|val| val.value)
+                .map(|val| (val.hour as usize, val.value))
                 .collect())
         }
         Err(e) => {
+            eprintln!("{}", e);
             tracing::error!("{}", e);
             Err(())
         }
@@ -85,28 +89,19 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<f64>, ()> {
 
 pub async fn get_hour_price(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()> {
     Ok(get_prices(day, client)
-        .await?
-        .into_iter()
-        .enumerate()
-        .collect())
+        .await?)
 }
 
-pub fn price_now(now: usize, prices: &Vec<f64>) -> Result<f64, ()> {
-    Ok(prices.get(now).ok_or(())?.to_owned())
+pub fn price_now(now: usize, prices: &Vec<HourPrice>) -> Result<f64, ()> {
+    Ok(prices.get(now).ok_or(())?.1.to_owned())
 }
 
-pub fn get_hour_price_now(now: usize, prices: &Vec<f64>) -> Result<HourPrice, ()> {
-    Ok((
-        chrono::Local::now().hour() as usize,
-        price_now(now, prices)?,
-    ))
+
+pub fn average(prices: &Vec<HourPrice>) -> Result<f64, ()> {
+    Ok(prices.iter().map(|hour_price| hour_price.1).sum::<f64>() / 24.0)
 }
 
-pub fn average(prices: &Vec<f64>) -> Result<f64, ()> {
-    Ok(prices.iter().sum::<f64>() / 24.0)
-}
-
-pub fn price_ratio(now: usize, prices: &Vec<f64>) -> Result<f64, ()> {
+pub fn price_ratio(now: usize, prices: &Vec<HourPrice>) -> Result<f64, ()> {
     Ok(price_now(now, prices)? / average(prices)?)
 }
 
@@ -117,14 +112,13 @@ pub async fn highest(
     stop: usize,
     client: &Client,
 ) -> Result<Vec<HourPrice>, ()> {
-    let mut prices: Vec<f64> = get_prices(day, client)
+    let mut prices: Vec<HourPrice> = get_prices(day, client)
         .await?
         .into_iter()
-        .skip(start)
-        .take(stop - start)
+        .filter(|hour_price| {start <= hour_price.0 && hour_price.0 <= stop})
         .collect();
-    prices.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    Ok(prices.into_iter().enumerate().take(count).collect())
+    prices.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(prices.into_iter().take(count).collect())
 }
 
 pub async fn lowest(
@@ -134,14 +128,13 @@ pub async fn lowest(
     stop: usize,
     client: &Client,
 ) -> Result<Vec<HourPrice>, ()> {
-    let mut prices: Vec<f64> = get_prices(day, client)
+    let mut prices: Vec<HourPrice> = get_prices(day, client)
         .await?
         .into_iter()
-        .skip(start)
-        .take(stop - start)
+        .filter(|hour_price| {start <= hour_price.0 && hour_price.0 <= stop})
         .collect();
-    prices.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    Ok(prices.into_iter().enumerate().take(count).collect())
+    prices.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(prices.into_iter().take(count).collect())
 }
 
 pub async fn max(day: Day, client: &Client) -> Result<HourPrice, ()> {
@@ -166,7 +159,7 @@ pub async fn rel_thresh(
     day: Day,
     mut low_thresh: f64,
     mut high_thresh: f64,
-    prices: &Vec<f64>,
+    prices: &Vec<HourPrice>,
     client: &Client,
 ) -> Result<Vec<HourPrice>, ()> {
     let avg = average(prices)?;
@@ -190,28 +183,32 @@ pub async fn within_thresh(
     now: usize,
     low_thresh: f64,
     high_thresh: f64,
-    prices: &Vec<f64>,
+    prices: &Vec<HourPrice>,
     client: &Client,
 ) -> Result<bool, ()> {
     Ok(
         rel_thresh(Day::Today, low_thresh, high_thresh, prices, client)
             .await?
-            .contains(&get_hour_price_now(now, prices)?),
+            .iter()
+            .map(|hour_price| hour_price.0)
+            .any(|hour| hour == now)
     )
 }
-
 pub async fn in_6_l_8(
     day: Day,
     now: usize,
-    prices: &Vec<f64>,
     client: &Client,
 ) -> Result<bool, ()> {
     Ok(!(highest(day, 2, 0, 8, client)
         .await?
-        .contains(&get_hour_price_now(now, prices)?))
+        .iter()
+        .map(|hour_price| hour_price.0)
+        .any(|hour| hour == now))
         && highest(day, 8, 0, 8, client)
             .await?
-            .contains(&get_hour_price_now(now, prices)?))
+            .iter()
+            .map(|hour_price| hour_price.0)
+            .any(|hour| hour == now))
 }
 
 pub async fn in_top(
@@ -219,20 +216,21 @@ pub async fn in_top(
     now: usize,
     start: usize,
     stop: usize,
-    prices: &Vec<f64>,
     client: &Client,
 ) -> Result<bool, ()> {
     Ok(highest(day, 3, start, stop, client)
         .await?
-        .contains(&get_hour_price_now(now, prices)?))
+        .iter()
+        .map(|hour_price| hour_price.0)
+        .any(|hour| hour == now))
 }
 
-pub async fn in_8_low(now: usize, prices: &Vec<f64>, client: &Client) -> Result<bool, ()> {
+pub async fn in_8_low(now: usize, client: &Client) -> Result<bool, ()> {
     Ok(lowest(Day::Today, 8, 0, 8, client)
         .await?
         .iter()
-        .map(|hour_price| hour_price.1)
-        .any(|e| e == price_now(now, prices).unwrap_or_default()))
+        .map(|hour_price| hour_price.0)
+        .any(|hour| hour == now))
 }
 
 #[derive(InfluxDbWriteable)]
@@ -263,17 +261,17 @@ struct Refined {
 pub async fn refine(hour: usize, client: &Client) -> Result<(), ()> {
     let prices = get_prices(Day::Today, client).await?;
 
-    let fut_in_6_l_8 = in_6_l_8(Day::Today, hour, &prices, client);
-    let fut_in_0_6_high = in_top(Day::Today, hour, 0, 6, &prices, client);
-    let fut_in_6_12_high = in_top(Day::Today, hour, 6, 12, &prices, client);
-    let fut_in_12_18_high = in_top(Day::Today, hour, 12, 18, &prices, client);
-    let fut_in_18_24_high = in_top(Day::Today, hour, 18, 24, &prices, client);
+    let fut_in_6_l_8 = in_6_l_8(Day::Today, hour, client);
+    let fut_in_0_6_high = in_top(Day::Today, hour, 0, 6, client);
+    let fut_in_6_12_high = in_top(Day::Today, hour, 6, 12, client);
+    let fut_in_12_18_high = in_top(Day::Today, hour, 12, 18, client);
+    let fut_in_18_24_high = in_top(Day::Today, hour, 18, 24, client);
     let fut_t90_115 = within_thresh(hour, 90.0, 115.0, &prices, client);
     let fut_t60_90 = within_thresh(hour, 60.0, 90.0, &prices, client);
     let fut_t0_60 = within_thresh(hour, 0.0, 60.0, &prices, client);
     let fut_t115_140 = within_thresh(hour, 115.0, 140.0, &prices, client);
     let fut_t140_999 = within_thresh(hour, 140.0, 999.0, &prices, client);
-    let fut_i8h_low = in_8_low(hour, &prices, client);
+    let fut_i8h_low = in_8_low(hour, client);
     let fut_pris_max = max(Day::Today, client);
     let fut_pris_min = min(Day::Today, client);
 
@@ -339,10 +337,11 @@ pub async fn refine(hour: usize, client: &Client) -> Result<(), ()> {
 
     let write_query = refined.into_query("refined");
 
-    let write_result = client.query(write_query).await;
+    // let write_result = client.query(write_query).await;
 
-    match write_result {
-        Ok(_) => Ok(()),
-        Err(_) => Err(()),
-    }
+    // match write_result {
+    //     Ok(_) => Ok(()),
+    //     Err(_) => Err(()),
+    // }
+    Ok(())
 }
