@@ -337,11 +337,10 @@ pub async fn refine(hour: usize, client: &Client) -> Result<(), ()> {
 
     let write_query = refined.into_query("refined");
 
-    // let write_result = client.query(write_query).await;
+    let write_result = client.query(write_query).await;
 
-    // match write_result {
-    //     Ok(_) => Ok(()),
-    //     Err(_) => Err(()),
-    // }
-    Ok(())
+    match write_result {
+        Ok(_) => Ok(()),
+        Err(_) => Err(()),
+    }
 }
