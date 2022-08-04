@@ -1,0 +1,21 @@
+[package]
+name = "tibber_refiner"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+local_credentials = { git = "https://github.com/CasaMack/local_credentials.git", features = ["async"] }
+tracing-subscriber = { version = "0.3" }
+tracing-appender = { version = "0.2" }
+influxdb = { version = "0.5.2", features = ["derive"] }
+tracing = { version = "0.1" }
+serde = { version = "1.0.137" }
+serde_json = { version = "1.0" }
+tokio = { version = "1.19.2", features = ["full"] }
+chrono = { version = "0.4" }
+futures = { version = "0.3" }
+
+# Thou shall compile
+openssl = { version = "0.10.29", features = ["vendored"] }
