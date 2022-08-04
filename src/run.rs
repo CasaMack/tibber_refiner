@@ -81,10 +81,10 @@ pub async fn tick(
     db_name: Arc<String>,
 ) -> Result<(), String> {
     tracing::debug!("tick");
-    let date_tomorrow = Utc::now().date().succ().and_hms(0, 0, 0).to_rfc3339();
-    let t_pos = date_tomorrow.find('T').unwrap();
-    let date_tomorrow = &date_tomorrow[..t_pos];
-    tracing::info!("Writing price info for {}", date_tomorrow);
+    let date = Utc::now().date().and_hms(0, 0, 0).to_rfc3339();
+    let t_pos = date.find('T').unwrap();
+    let date = &date[..t_pos];
+    tracing::info!("Writing price info for {}", date);
     let client = Client::new(db_addr.as_str(), db_name.as_str());
     
     let mut handles = Vec::new();
