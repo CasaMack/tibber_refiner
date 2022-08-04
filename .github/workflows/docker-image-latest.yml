@@ -37,7 +37,7 @@ jobs:
       - name: Compile
         run: cross build --release --target ${{ env.TARGET_LONG }}
       - name: Move
-        run: mv target/${{ env.TARGET_LONG }}/release/tibber_status ./tibber_status
+        run: mv target/${{ env.TARGET_LONG }}/release/tibber_refiner ./tibber_refiner
 
       - name: Build and push
         uses: docker/build-push-action@v3
@@ -45,4 +45,4 @@ jobs:
           context: .
           platforms: linux/${{ matrix.target }}
           push: true
-          tags: areskiko/tibber_status:${{ env.TAG }}
+          tags: areskiko/tibber_refiner:${{ env.TAG }}

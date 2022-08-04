@@ -38,9 +38,9 @@ jobs:
       - name: Compile
         run: cross build --release --target ${{ env.TARGET_LONG }}
       - name: Move
-        run: mv target/${{ env.TARGET_LONG }}/release/tibber_status ./tibber_status
+        run: mv target/${{ env.TARGET_LONG }}/release/tibber_refiner ./tibber_refiner
       - name: Copy
-        run: cp tibber_status tibber_status-${{ env.tag }}
+        run: cp tibber_refiner tibber_refiner-${{ env.tag }}
       - name: Set tag env
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
       - name: Build and push
@@ -49,9 +49,9 @@ jobs:
           context: .
           platforms: linux/${{ matrix.target }}
           push: true
-          tags: areskiko/tibber_status:${{ env.TAG }}-${{ env.RELEASE_VERSION }}
+          tags: areskiko/tibber_refiner:${{ env.TAG }}-${{ env.RELEASE_VERSION }}
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: tibber_status-${{ env.TAG }}
+          files: tibber_refiner-${{ env.TAG }}
