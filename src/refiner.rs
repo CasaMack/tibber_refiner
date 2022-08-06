@@ -1,4 +1,3 @@
-use chrono::Timelike;
 use influxdb::{Client, InfluxDbWriteable, ReadQuery};
 use serde::Deserialize;
 use tracing::instrument;
@@ -18,14 +17,14 @@ struct QueryResults {
 
 #[derive(Deserialize)]
 struct Statement {
-    pub statement_id: usize,
+    pub _statement_id: usize,
     pub series: Vec<Serie>,
 }
 
 #[derive(Deserialize)]
 struct Serie {
-    pub name: String,
-    pub columns: Vec<String>,
+    pub _name: String,
+    pub _columns: Vec<String>,
     pub values: Vec<Value>,
 }
 
@@ -33,7 +32,7 @@ struct Serie {
 struct Value {
     _datetime: String,
     pub value: f64,
-    pub hour: u32
+    pub hour: u32,
 }
 
 #[instrument(skip(client))]
@@ -62,7 +61,6 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()>
         date
     ));
 
-
     let read_result = client.query(read_query).await;
     match read_result {
         Ok(result) => {
@@ -88,14 +86,12 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()>
 }
 
 pub async fn get_hour_price(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()> {
-    Ok(get_prices(day, client)
-        .await?)
+    Ok(get_prices(day, client).await?)
 }
 
 pub fn price_now(now: usize, prices: &Vec<HourPrice>) -> Result<f64, ()> {
     Ok(prices.get(now).ok_or(())?.1.to_owned())
 }
-
 
 pub fn average(prices: &Vec<HourPrice>) -> Result<f64, ()> {
     Ok(prices.iter().map(|hour_price| hour_price.1).sum::<f64>() / 24.0)
@@ -115,7 +111,7 @@ pub async fn highest(
     let mut prices: Vec<HourPrice> = get_prices(day, client)
         .await?
         .into_iter()
-        .filter(|hour_price| {start <= hour_price.0 && hour_price.0 <= stop})
+        .filter(|hour_price| start <= hour_price.0 && hour_price.0 <= stop)
         .collect();
     prices.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
     Ok(prices.into_iter().take(count).collect())
@@ -131,7 +127,7 @@ pub async fn lowest(
     let mut prices: Vec<HourPrice> = get_prices(day, client)
         .await?
         .into_iter()
-        .filter(|hour_price| {start <= hour_price.0 && hour_price.0 <= stop})
+        .filter(|hour_price| start <= hour_price.0 && hour_price.0 <= stop)
         .collect();
     prices.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     Ok(prices.into_iter().take(count).collect())
@@ -191,14 +187,10 @@ pub async fn within_thresh(
             .await?
             .iter()
             .map(|hour_price| hour_price.0)
-            .any(|hour| hour == now)
+            .any(|hour| hour == now),
     )
 }
-pub async fn in_6_l_8(
-    day: Day,
-    now: usize,
-    client: &Client,
-) -> Result<bool, ()> {
+pub async fn in_6_l_8(day: Day, now: usize, client: &Client) -> Result<bool, ()> {
     Ok(!(highest(day, 2, 0, 8, client)
         .await?
         .iter()
@@ -306,7 +298,7 @@ pub async fn refine(hour: usize, client: &Client) -> Result<(), ()> {
     );
 
     let refined = Refined {
-        time: chrono::Utc::now(),
+        time: chrono::Utc::now().date().and_hms(hour as u32, 0, 0),
         hour: hour as u32,
         date: chrono::Utc::now()
             .date()

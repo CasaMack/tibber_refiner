@@ -1,8 +1,8 @@
-use std::{env, sync::Arc, rc};
+use std::{env, rc, sync::Arc};
 
-use chrono::{Utc};
-use influxdb::{Client};
-use tokio::{time};
+use chrono::Utc;
+use influxdb::Client;
+use tokio::time;
 use tracing::{instrument, metadata::LevelFilter, Level};
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::{
@@ -76,25 +76,27 @@ pub fn get_logger() -> (
 }
 
 #[instrument(skip_all, level = "trace")]
-pub async fn tick(
-    db_addr: Arc<String>,
-    db_name: Arc<String>,
-) -> Result<(), String> {
+pub async fn tick(db_addr: Arc<String>, db_name: Arc<String>) -> Result<(), String> {
     tracing::debug!("tick");
     let date = Utc::now().date().and_hms(0, 0, 0).to_rfc3339();
     let t_pos = date.find('T').unwrap();
     let date = &date[..t_pos];
     tracing::info!("Writing price info for {}", date);
     let client = Client::new(db_addr.as_str(), db_name.as_str());
-    
+
     let mut handles = Vec::new();
     let client_ref = rc::Rc::new(client);
     for hour in 0..23 {
         let clone = client_ref.clone();
-        handles.push(async move { refine(hour, clone.as_ref()).await.map_err(|e| {tracing::error!("Error in refining {}", hour); e}) });
+        handles.push(async move {
+            refine(hour, clone.as_ref()).await.map_err(|e| {
+                tracing::error!("Error in refining {}", hour);
+                e
+            })
+        });
     }
     tokio::join!(futures::future::join_all(handles));
-    
+
     Ok(())
 }
 
