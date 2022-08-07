@@ -17,26 +17,26 @@ struct QueryResults {
 
 #[derive(Deserialize)]
 struct Statement {
-    pub _statement_id: usize,
+    pub statement_id: usize,
     pub series: Vec<Serie>,
 }
 
 #[derive(Deserialize)]
 struct Serie {
-    pub _name: String,
-    pub _columns: Vec<String>,
+    pub name: String,
+    pub columns: Vec<String>,
     pub values: Vec<Value>,
 }
 
 #[derive(Deserialize)]
 struct Value {
-    _datetime: String,
+    datetime: String,
     pub value: f64,
     pub hour: u32,
 }
 
 #[instrument(skip(client))]
-pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()> {
+pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, String> {
     let date = match day {
         Day::Today => chrono::Local::now()
             .date()
@@ -44,7 +44,7 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()>
             .split('+')
             .into_iter()
             .next()
-            .ok_or(())?
+            .ok_or("Error splitting date")?
             .to_owned(),
         Day::Tomorrow => chrono::Local::now()
             .date()
@@ -53,7 +53,7 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()>
             .split('+')
             .into_iter()
             .next()
-            .ok_or(())?
+            .ok_or("Error splitting date")?
             .to_owned(),
     };
     let read_query = ReadQuery::new(format!(
@@ -61,43 +61,47 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()>
         date
     ));
 
-    let read_result = client.query(read_query).await;
+    let read_result = client.query(&read_query).await;
     match read_result {
         Ok(result) => {
-            println!("{}", result);
-            let r: QueryResults = serde_json::from_str(&result).or(Err(()))?;
+            let r: QueryResults = serde_json::from_str(&result).map_err(|e| {
+                format!(
+                    "Error parsing result from {:?} into QueryResults: {:?}",
+                    read_query, e
+                )
+            })?;
             Ok(r.results
                 .get(0)
-                .ok_or(())?
+                .ok_or("Access index out of bounds on results, likely something wrong happened during parsing")?
                 .series
                 .get(0)
-                .ok_or(())?
+                .ok_or("Access index out of bounds on series, likely something wrong happened during parsing")?
                 .values
                 .iter()
                 .map(|val| (val.hour as usize, val.value))
                 .collect())
         }
-        Err(e) => {
-            eprintln!("{}", e);
-            tracing::error!("{}", e);
-            Err(())
-        }
+        Err(e) => Err(e.to_string()),
     }
 }
 
-pub async fn get_hour_price(day: Day, client: &Client) -> Result<Vec<HourPrice>, ()> {
+pub async fn get_hour_price(day: Day, client: &Client) -> Result<Vec<HourPrice>, String> {
     Ok(get_prices(day, client).await?)
 }
 
-pub fn price_now(now: usize, prices: &Vec<HourPrice>) -> Result<f64, ()> {
-    Ok(prices.get(now).ok_or(())?.1.to_owned())
+pub fn price_now(now: usize, prices: &Vec<HourPrice>) -> Result<f64, String> {
+    Ok(prices
+        .get(now)
+        .ok_or(format!("Access index out of bounds using hour = {}", now))?
+        .1
+        .to_owned())
 }
 
-pub fn average(prices: &Vec<HourPrice>) -> Result<f64, ()> {
+pub fn average(prices: &Vec<HourPrice>) -> Result<f64, String> {
     Ok(prices.iter().map(|hour_price| hour_price.1).sum::<f64>() / 24.0)
 }
 
-pub fn price_ratio(now: usize, prices: &Vec<HourPrice>) -> Result<f64, ()> {
+pub fn price_ratio(now: usize, prices: &Vec<HourPrice>) -> Result<f64, String> {
     Ok(price_now(now, prices)? / average(prices)?)
 }
 
@@ -107,7 +111,7 @@ pub async fn highest(
     start: usize,
     stop: usize,
     client: &Client,
-) -> Result<Vec<HourPrice>, ()> {
+) -> Result<Vec<HourPrice>, String> {
     let mut prices: Vec<HourPrice> = get_prices(day, client)
         .await?
         .into_iter()
@@ -123,7 +127,7 @@ pub async fn lowest(
     start: usize,
     stop: usize,
     client: &Client,
-) -> Result<Vec<HourPrice>, ()> {
+) -> Result<Vec<HourPrice>, String> {
     let mut prices: Vec<HourPrice> = get_prices(day, client)
         .await?
         .into_iter()
@@ -133,21 +137,21 @@ pub async fn lowest(
     Ok(prices.into_iter().take(count).collect())
 }
 
-pub async fn max(day: Day, client: &Client) -> Result<HourPrice, ()> {
+pub async fn max(day: Day, client: &Client) -> Result<HourPrice, String> {
     Ok(highest(day, 1, 0, 24, client)
         .await?
         .first()
         .take()
-        .ok_or(())?
+        .ok_or("Error taking first from highest")?
         .to_owned())
 }
 
-pub async fn min(day: Day, client: &Client) -> Result<HourPrice, ()> {
+pub async fn min(day: Day, client: &Client) -> Result<HourPrice, String> {
     Ok(lowest(day, 1, 0, 24, client)
         .await?
         .first()
         .take()
-        .ok_or(())?
+        .ok_or("Error taking first from lowest")?
         .to_owned())
 }
 
@@ -157,7 +161,7 @@ pub async fn rel_thresh(
     mut high_thresh: f64,
     prices: &Vec<HourPrice>,
     client: &Client,
-) -> Result<Vec<HourPrice>, ()> {
+) -> Result<Vec<HourPrice>, String> {
     let avg = average(prices)?;
     if low_thresh > 1.0 {
         low_thresh /= 100.0;
@@ -181,7 +185,7 @@ pub async fn within_thresh(
     high_thresh: f64,
     prices: &Vec<HourPrice>,
     client: &Client,
-) -> Result<bool, ()> {
+) -> Result<bool, String> {
     Ok(
         rel_thresh(Day::Today, low_thresh, high_thresh, prices, client)
             .await?
@@ -190,7 +194,7 @@ pub async fn within_thresh(
             .any(|hour| hour == now),
     )
 }
-pub async fn in_6_l_8(day: Day, now: usize, client: &Client) -> Result<bool, ()> {
+pub async fn in_6_l_8(day: Day, now: usize, client: &Client) -> Result<bool, String> {
     Ok(!(highest(day, 2, 0, 8, client)
         .await?
         .iter()
@@ -209,7 +213,7 @@ pub async fn in_top(
     start: usize,
     stop: usize,
     client: &Client,
-) -> Result<bool, ()> {
+) -> Result<bool, String> {
     Ok(highest(day, 3, start, stop, client)
         .await?
         .iter()
@@ -217,7 +221,7 @@ pub async fn in_top(
         .any(|hour| hour == now))
 }
 
-pub async fn in_8_low(now: usize, client: &Client) -> Result<bool, ()> {
+pub async fn in_8_low(now: usize, client: &Client) -> Result<bool, String> {
     Ok(lowest(Day::Today, 8, 0, 8, client)
         .await?
         .iter()
@@ -225,9 +229,9 @@ pub async fn in_8_low(now: usize, client: &Client) -> Result<bool, ()> {
         .any(|hour| hour == now))
 }
 
-#[derive(InfluxDbWriteable)]
+#[derive(InfluxDbWriteable, Debug)]
 struct Refined {
-    time: chrono::DateTime<chrono::Utc>,
+    time: chrono::DateTime<chrono::Local>,
     #[influxdb(tag)]
     hour: u32,
     #[influxdb(tag)]
@@ -250,7 +254,7 @@ struct Refined {
     pris_min: u32,
 }
 
-pub async fn refine(hour: usize, client: &Client) -> Result<(), ()> {
+pub async fn refine(hour: usize, client: &Client) -> Result<(), String> {
     let prices = get_prices(Day::Today, client).await?;
 
     let fut_in_6_l_8 = in_6_l_8(Day::Today, hour, client);
@@ -298,9 +302,13 @@ pub async fn refine(hour: usize, client: &Client) -> Result<(), ()> {
     );
 
     let refined = Refined {
-        time: chrono::Utc::now().date().and_hms(hour as u32, 0, 0),
+        time: chrono::Local::now()
+            .date()
+            .and_hms(0, 0, 0)
+            .checked_add_signed(chrono::Duration::hours(hour as i64))
+            .ok_or("Datetime overflow")?,
         hour: hour as u32,
-        date: chrono::Utc::now()
+        date: chrono::Local::now()
             .date()
             .and_hms(0, 0, 0)
             .to_rfc3339()
@@ -333,6 +341,6 @@ pub async fn refine(hour: usize, client: &Client) -> Result<(), ()> {
 
     match write_result {
         Ok(_) => Ok(()),
-        Err(_) => Err(()),
+        Err(e) => Err(e.to_string()),
     }
 }

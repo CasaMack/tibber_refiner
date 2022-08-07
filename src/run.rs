@@ -86,11 +86,11 @@ pub async fn tick(db_addr: Arc<String>, db_name: Arc<String>) -> Result<(), Stri
 
     let mut handles = Vec::new();
     let client_ref = rc::Rc::new(client);
-    for hour in 0..23 {
+    for hour in 0..24 {
         let clone = client_ref.clone();
         handles.push(async move {
             refine(hour, clone.as_ref()).await.map_err(|e| {
-                tracing::error!("Error in refining {}", hour);
+                tracing::error!("Error in refining {}: {}", hour, e);
                 e
             })
         });
