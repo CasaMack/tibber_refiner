@@ -78,7 +78,7 @@ pub fn get_logger() -> (
 #[instrument(skip_all, level = "trace")]
 pub async fn tick(db_addr: Arc<String>, db_name: Arc<String>) -> Result<(), String> {
     tracing::debug!("tick");
-    let date = Utc::now().date().and_hms(0, 0, 0).to_rfc3339();
+    let date = chrono::offset::Local::now().date().and_hms(0, 0, 0).to_rfc3339();
     let t_pos = date.find('T').unwrap();
     let date = &date[..t_pos];
     tracing::info!("Writing price info for {}", date);
@@ -105,9 +105,9 @@ pub fn get_instant() -> time::Instant {
         .ok()
         .unwrap_or(DEFAULT_UPDATE_TIME.to_string());
     let time = time.parse().unwrap();
-    let when = chrono::Utc::now().date().succ().and_hms(time, 0, 0);
+    let when = chrono::offset::Local::now().date().succ().and_hms(time, 0, 0);
     tracing::info!("Next update time: {}", when);
-    let next_day = when.signed_duration_since(chrono::Utc::now());
+    let next_day = when.signed_duration_since(chrono::offset::Local::now());
     let std_next_day = match next_day.to_std() {
         Ok(d) => d,
         Err(e) => {
