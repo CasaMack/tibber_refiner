@@ -1,6 +1,7 @@
 use influxdb::{Client, InfluxDbWriteable, ReadQuery};
 use serde::Deserialize;
 use tracing::instrument;
+use chrono_tz::Europe::Oslo;
 
 type HourPrice = (usize, f64);
 
@@ -38,7 +39,7 @@ struct Value {
 #[instrument(skip(client))]
 pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, String> {
     let date = match day {
-        Day::Today => chrono::Local::now()
+        Day::Today => chrono::Utc::now().with_timezone(&Oslo)
             .date()
             .to_string()
             .split('+')
@@ -46,7 +47,7 @@ pub async fn get_prices(day: Day, client: &Client) -> Result<Vec<HourPrice>, Str
             .next()
             .ok_or("Error splitting date")?
             .to_owned(),
-        Day::Tomorrow => chrono::Local::now()
+        Day::Tomorrow => chrono::Utc::now().with_timezone(&Oslo)
             .date()
             .succ()
             .to_string()
@@ -231,7 +232,7 @@ pub async fn in_8_low(now: usize, client: &Client) -> Result<bool, String> {
 
 #[derive(InfluxDbWriteable, Debug)]
 struct Refined {
-    time: chrono::DateTime<chrono::Local>,
+    time: chrono::DateTime<chrono_tz::Tz>,
     #[influxdb(tag)]
     hour: u32,
     #[influxdb(tag)]
@@ -302,13 +303,13 @@ pub async fn refine(hour: usize, client: &Client) -> Result<(), String> {
     );
 
     let refined = Refined {
-        time: chrono::Local::now()
+        time: chrono::Utc::now().with_timezone(&Oslo)
             .date()
             .and_hms(0, 0, 0)
             .checked_add_signed(chrono::Duration::hours(hour as i64))
             .ok_or("Datetime overflow")?,
         hour: hour as u32,
-        date: chrono::Local::now()
+        date: chrono::Utc::now().with_timezone(&Oslo)
             .date()
             .and_hms(0, 0, 0)
             .to_rfc3339()
